@@ -27,14 +27,14 @@ jobs:
         working-directory: src/WebApplication1
 
       - name: dotnet publish
-        run: dotnet publish -c Release -o ${{env.DOTNET_ROOT}}/myapp
+        run: dotnet publish -c Release -o ${{env.GITHUB_WORKSPACE}}/myapp
         working-directory: src/WebApplication1
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v3
         with:
           name: .net-app
-          path: ${{env.DOTNET_ROOT}}/myapp
+          path: ${{env.GITHUB_WORKSPACE}}/myapp
 
   deploy:
     runs-on: windows-latest
