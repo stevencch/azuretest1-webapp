@@ -8,3 +8,48 @@
     <h1 class="display-4">Welcome</h1>
     <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
 </div>
+
+<h2>File Upload</h2>
+
+<input type="file" id="fileInput" name="file">
+<button type="button" id="submitButton">Upload</button>
+<div id="message"></div>
+
+<script>
+    const form = document.getElementById('uploadForm');
+    const fileInput = document.getElementById('fileInput');
+    const submitButton = document.getElementById('submitButton');
+    const messageDiv = document.getElementById('message');
+
+    submitButton.addEventListener('click', async () => {
+        const selectedFile = fileInput.files[0];
+
+        if (!selectedFile) {
+            messageDiv.textContent = 'Please select a file to upload.';
+            return;
+        }
+
+        // Prepare the data to send
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+
+        // Send the upload request using Fetch API
+        try {
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json(); // Parse response as JSON
+
+            if (response.ok) {
+                messageDiv.textContent = 'File uploaded successfully!';
+                // Handle successful upload (e.g., clear form, display success message)
+            } else {
+                messageDiv.textContent = `Error: ${data.message || 'Upload failed'}`;
+            }
+        } catch (error) {
+            messageDiv.textContent = `Error: ${error.message}`;
+        }
+    });
+</script>

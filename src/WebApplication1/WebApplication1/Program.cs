@@ -44,6 +44,55 @@ app.MapGet("/weatherforecast", () =>
 .WithName("GetWeatherForecast")
 .WithOpenApi();
 
+app.MapGet("/get401", () =>
+{
+    return Results.Unauthorized();
+})
+.WithName("get401")
+.WithOpenApi();
+
+app.MapGet("/get500", () =>
+{
+    return Results.StatusCode(500);
+})
+.WithName("get500")
+.WithOpenApi();
+
+app.MapGet("/getException", () =>
+{
+    var i = 0;
+    return Results.Ok((1 / i).ToString());
+})
+.WithName("getException")
+.WithOpenApi();
+
+app.MapPost("/upload", async (IFormFile file) =>
+{
+    try
+    {
+        var _uploadsDirectory = "uploads";
+
+        // Get a file path to save to
+        var filePath = Path.Combine(_uploadsDirectory, file.FileName);
+
+        // Save the file
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream);
+        }
+
+        return Results.Ok(new { Message = "OK" });
+    }
+    catch (Exception ex)
+    {
+        // Handle any errors
+        return Results.BadRequest(ex.Message);
+    }
+})
+.Produces(200)
+.DisableAntiforgery();
+
+
 app.MapRazorPages();
 
 app.Run();
