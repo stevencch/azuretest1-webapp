@@ -1,0 +1,57 @@
+﻿@page
+@model WebApplication1.Pages.Test1Model
+
+@{
+}
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.8/axios.min.js" integrity="sha512-PJa3oQSLWRB7wHZ7GQ/g+qyv6r4mbuhmiDb8BjSFZ8NZ2a42oTtAq5n0ucWAwcQDlikAtkub+tPVCw4np27WCg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+
+<h1>Zip and Upload File</h1>
+<input type="file" id="fileInput" accept=".csv">
+<button id="uploadButton">Upload Zip</button>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const uploadButton = document.getElementById('uploadButton');
+
+    uploadButton.addEventListener('click', async () => {
+        const file = fileInput.files[0];
+
+        if (!file) {
+            alert('Please select a file to upload.');
+            return;
+        }
+
+        const zip = new JSZip();
+        const fileName = file.name; // Assuming you want to keep the original filename
+
+        try {
+            const content = await file.text(); // Adjust based on file type (text(), arrayBuffer(), etc.)
+            zip.file(fileName, content); // Add file to zip
+
+            const zipBlob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+
+            // Send zipBlob to server using AJAX or Fetch API
+            const formData = new FormData();
+            formData.append('file', zipBlob, fileName + '.zip'); // Add filename extension
+
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (response.ok) {
+                alert('File uploaded successfully!');
+            } else {
+                alert('Error uploading file.');
+            }
+        } catch (error) {
+            console.error(error);
+            alert('An error occurred while processing the file.');
+        }
+    });
+
+
+</script>

@@ -17,6 +17,8 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddScoped<StorageService>();
 builder.Services.AddScoped<EventGridService>();
+builder.Services.AddScoped<EventHubService>();
+
 builder.Logging.AddConsole();
 var app = builder.Build();
 
@@ -93,7 +95,12 @@ app.MapPost("/upload", async (IFormFile file, StorageService storageService) =>
             await file.CopyToAsync(stream);
         }
 
-        await storageService.UploadFile(file.FileName);
+        if (file.FileName.EndsWith("html"))
+        {
+            await storageService.UploadFile(file.FileName);
+        }
+
+        
 
         return Results.Ok(new { Message = "OK" });
     }
@@ -105,6 +112,7 @@ app.MapPost("/upload", async (IFormFile file, StorageService storageService) =>
 })
 .Produces(200)
 .DisableAntiforgery();
+
 
 app.MapPost("/receiveEvent", async (HttpRequest request, EventGridService eventGridService,[FromServices] ILogger<EventGridService> logger) =>
 {
@@ -137,13 +145,49 @@ app.MapPost("/receiveEvent", async (HttpRequest request, EventGridService eventG
 .Produces(200)
 .WithOpenApi();
 
-app.MapGet("/sentEvent",async (EventGridService eventGridService) =>
+app.MapGet("/sentEventGrid",async (EventGridService eventGridService) =>
 {
     await eventGridService.Publish();
+    return Results.Ok(new { Message = "OK" });
 })
 .WithName("sentEvent")
 .WithOpenApi();
 
+app.MapGet("/sentEventHub", async (EventHubService eventHubService) =>
+{
+    await eventHubService.SendToRandomPartition();
+    return Results.Ok(new { Message = "OK" });
+})
+.WithName("sentEventHub")
+.WithOpenApi();
+
+app.MapGet("/sentEventHub/{key}", async (string key,EventHubService eventHubService) =>
+{
+    await eventHubService.SendToSamePartition(key);
+    return Results.Ok(new { Message = "OK" });
+})
+.WithName("sentEventHubByKey")
+.WithOpenApi();
+
+app.MapGet("/EventHubPartition", async (EventHubService eventHubService) =>
+{
+    var list = new List<string>();
+    await foreach(var a in eventHubService.GetPartitionInfo())
+    {
+        list.Add(a);
+    }
+    return Results.Ok(list);
+})
+.WithName("EventHubPartition")
+.WithOpenApi();
+
+app.MapGet("/EventHub/{id}", async (string id,EventHubService eventHubService) =>
+{
+    var list = await eventHubService.ReadFromPartition(id);
+    return Results.Ok(list);
+})
+.WithName("EventHubById")
+.WithOpenApi();
 
 app.MapRazorPages();
 
