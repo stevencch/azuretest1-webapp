@@ -18,6 +18,10 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddScoped<StorageService>();
 builder.Services.AddScoped<EventGridService>();
 builder.Services.AddScoped<EventHubService>();
+builder.Services.AddHostedService<DevService>();
+builder.Services.AddSingleton<QueueService>();
+builder.Services.AddSingleton<ServiceBusService>();
+builder.Services.AddHostedService<ServiceBusHostedService>();
 
 builder.Logging.AddConsole();
 var app = builder.Build();
@@ -187,6 +191,23 @@ app.MapGet("/EventHub/{id}", async (string id,EventHubService eventHubService) =
     return Results.Ok(list);
 })
 .WithName("EventHubById")
+.WithOpenApi();
+
+
+app.MapGet("/SendQueue", async ( QueueService queueService) =>
+{
+    await queueService.SendMessageAsync("Now:" + DateTime.Now);
+    return Results.Ok();
+})
+.WithName("SendQueue")
+.WithOpenApi();
+
+app.MapGet("/SendServiceBus", async (ServiceBusService serviceBusService) =>
+{
+    await serviceBusService.SendMessageAsync("Now:" + DateTime.Now);
+    return Results.Ok();
+})
+.WithName("SendServiceBus")
 .WithOpenApi();
 
 app.MapRazorPages();
