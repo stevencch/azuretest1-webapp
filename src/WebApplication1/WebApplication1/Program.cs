@@ -6,6 +6,10 @@ using WebApplication1.Services;
 using System.Text.Json;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 using Azure;
+using System.Configuration;
+using Polly.Extensions.Http;
+using Polly;
+using Microsoft.Extensions.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +26,67 @@ builder.Services.AddHostedService<DevService>();
 builder.Services.AddSingleton<QueueService>();
 builder.Services.AddSingleton<ServiceBusService>();
 builder.Services.AddHostedService<ServiceBusHostedService>();
+builder.Services.AddScoped<RedisService>();
+builder.Services.AddScoped<KeyVaultService>();
+
+
+
+builder.Services.AddApplicationInsightsTelemetry();
+builder.Services.AddHttpClient<RetryService>( configureClient =>
+{
+    configureClient.BaseAddress = new Uri(builder.Configuration.GetSection("AppSettings:RetryUrl").Value);
+})
+           .AddPolicyHandler(GetRetryPolicy(builder.Services))
+           .AddPolicyHandler(GetCircuitBreakerPolicy(builder.Services));
+
+
+IAsyncPolicy<HttpResponseMessage> GetRetryPolicy(IServiceCollection services)
+{
+    return HttpPolicyExtensions
+      // Handle HttpRequestExceptions, 408 and 5xx status codes:
+      .HandleTransientHttpError()
+      // Handle 404 not found
+      .OrResult(msg => msg.StatusCode == System.Net.HttpStatusCode.NotFound)
+      // Retry 3 times, each time wait 2, 4 and 8 seconds before retrying:
+      .WaitAndRetryAsync(new[]
+        {
+                   TimeSpan.FromSeconds(2),
+                   TimeSpan.FromSeconds(4),
+                   TimeSpan.FromSeconds(8)
+        },
+         onRetry: (outcome, timespan, retryAttempt, context) =>
+         {
+             services.BuildServiceProvider()
+                     .GetRequiredService<ILogger<RetryService>>()?
+                     .LogError("Delaying for {delay}ms, then making retry: {retry}.", timespan.TotalMilliseconds, retryAttempt);
+         });
+}
+
+IAsyncPolicy<HttpResponseMessage> GetCircuitBreakerPolicy(IServiceCollection services)
+{
+    return HttpPolicyExtensions
+      // Handle HttpRequestExceptions, 408 and 5xx status codes:
+      .HandleTransientHttpError()
+      .CircuitBreakerAsync(3, TimeSpan.FromSeconds(10),
+      onBreak: (result, timeSpan, context) =>
+      {
+          services.BuildServiceProvider()
+                      .GetRequiredService<ILogger<RetryService>>()?
+                      .LogError("CircuitBreaker onBreak for {delay}ms", timeSpan.TotalMilliseconds);
+      },
+      onReset: context =>
+      {
+          services.BuildServiceProvider()
+                               .GetRequiredService<ILogger<RetryService>>()?
+                               .LogError("CircuitBreaker closed again");
+      },
+      onHalfOpen: () =>
+      {
+          services.BuildServiceProvider()
+                      .GetRequiredService<ILogger<RetryService>>()?
+                      .LogError("CircuitBreaker onHalfOpen");
+      });
+}
 
 builder.Logging.AddConsole();
 var app = builder.Build();
@@ -104,7 +169,7 @@ app.MapPost("/upload", async (IFormFile file, StorageService storageService) =>
             await storageService.UploadFile(file.FileName);
         }
 
-        
+
 
         return Results.Ok(new { Message = "OK" });
     }
@@ -118,9 +183,9 @@ app.MapPost("/upload", async (IFormFile file, StorageService storageService) =>
 .DisableAntiforgery();
 
 
-app.MapPost("/receiveEvent", async (HttpRequest request, EventGridService eventGridService,[FromServices] ILogger<EventGridService> logger) =>
+app.MapPost("/receiveEvent", async (HttpRequest request, EventGridService eventGridService, [FromServices] ILogger<EventGridService> logger) =>
 {
-    using  var requestStream = new StreamReader(request.Body) ;
+    using var requestStream = new StreamReader(request.Body);
 
     var bodyJson = await requestStream.ReadToEndAsync();
     logger.LogInformation(bodyJson);
@@ -140,7 +205,7 @@ app.MapPost("/receiveEvent", async (HttpRequest request, EventGridService eventG
     {
         var notificationEvent = events.First();
         var data = notificationEvent.Data.ToObjectFromJson<DevMessage>();
-        logger.LogInformation(notificationEvent.Subject+data.Message);
+        logger.LogInformation(notificationEvent.Subject + data.Message);
         return Results.Ok();
     }
 
@@ -149,7 +214,7 @@ app.MapPost("/receiveEvent", async (HttpRequest request, EventGridService eventG
 .Produces(200)
 .WithOpenApi();
 
-app.MapGet("/sentEventGrid",async (EventGridService eventGridService) =>
+app.MapGet("/sentEventGrid", async (EventGridService eventGridService) =>
 {
     await eventGridService.Publish();
     return Results.Ok(new { Message = "OK" });
@@ -165,7 +230,7 @@ app.MapGet("/sentEventHub", async (EventHubService eventHubService) =>
 .WithName("sentEventHub")
 .WithOpenApi();
 
-app.MapGet("/sentEventHub/{key}", async (string key,EventHubService eventHubService) =>
+app.MapGet("/sentEventHub/{key}", async (string key, EventHubService eventHubService) =>
 {
     await eventHubService.SendToSamePartition(key);
     return Results.Ok(new { Message = "OK" });
@@ -176,7 +241,7 @@ app.MapGet("/sentEventHub/{key}", async (string key,EventHubService eventHubServ
 app.MapGet("/EventHubPartition", async (EventHubService eventHubService) =>
 {
     var list = new List<string>();
-    await foreach(var a in eventHubService.GetPartitionInfo())
+    await foreach (var a in eventHubService.GetPartitionInfo())
     {
         list.Add(a);
     }
@@ -185,7 +250,7 @@ app.MapGet("/EventHubPartition", async (EventHubService eventHubService) =>
 .WithName("EventHubPartition")
 .WithOpenApi();
 
-app.MapGet("/EventHub/{id}", async (string id,EventHubService eventHubService) =>
+app.MapGet("/EventHub/{id}", async (string id, EventHubService eventHubService) =>
 {
     var list = await eventHubService.ReadFromPartition(id);
     return Results.Ok(list);
@@ -194,7 +259,7 @@ app.MapGet("/EventHub/{id}", async (string id,EventHubService eventHubService) =
 .WithOpenApi();
 
 
-app.MapGet("/SendQueue", async ( QueueService queueService) =>
+app.MapGet("/SendQueue", async (QueueService queueService) =>
 {
     await queueService.SendMessageAsync("Now:" + DateTime.Now);
     return Results.Ok();
@@ -216,6 +281,30 @@ app.MapGet("/SendServiceBusTopic", async (ServiceBusService serviceBusService) =
     return Results.Ok();
 })
 .WithName("SendServiceBusTopic")
+.WithOpenApi();
+
+app.MapGet("/GetRedis", async (RedisService redisService) =>
+{
+    var msg = await redisService.Test();
+    return Results.Ok(msg);
+})
+.WithName("GetRedis")
+.WithOpenApi();
+
+app.MapGet("/TestRetry", async (RetryService retryService) =>
+{
+    var msg=await retryService.Test();
+    return Results.Ok(msg);
+})
+.WithName("TestRetry")
+.WithOpenApi();
+
+app.MapGet("/TestKeyVault", async (KeyVaultService keyVaultService) =>
+{
+    var msg = keyVaultService.Test();
+    return Results.Ok(msg);
+})
+.WithName("TestKeyVault")
 .WithOpenApi();
 
 app.MapRazorPages();
