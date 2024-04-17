@@ -210,6 +210,14 @@ app.MapGet("/SendServiceBus", async (ServiceBusService serviceBusService) =>
 .WithName("SendServiceBus")
 .WithOpenApi();
 
+app.MapGet("/SendServiceBusTopic", async (ServiceBusService serviceBusService) =>
+{
+    await serviceBusService.SendTopicMessageAsync("Now:" + DateTime.Now);
+    return Results.Ok();
+})
+.WithName("SendServiceBusTopic")
+.WithOpenApi();
+
 app.MapRazorPages();
 
 app.Run();

@@ -7,6 +7,7 @@ namespace WebApplication1.Services
     {
         private readonly string _connectionString = "";
         private readonly string _queueName = "sbq-azuretest1";
+        private const string topicName = "sbt-azuretest1";
         private readonly ILogger<ServiceBusService> _logger;
 
         public ServiceBusService(IConfiguration configuration, ILogger<ServiceBusService> logger)
@@ -26,6 +27,15 @@ namespace WebApplication1.Services
             }
         }
 
-
+        public async Task SendTopicMessageAsync(string message)
+        {
+            await using (ServiceBusClient client = new ServiceBusClient(_connectionString))
+            {
+                ServiceBusSender sender = client.CreateSender(topicName);
+                ServiceBusMessage busMessage = new ServiceBusMessage(Encoding.UTF8.GetBytes(message));
+                await sender.SendMessageAsync(busMessage);
+                _logger.LogInformation($"Sent: {message}");
+            }
+        }
     }
 }

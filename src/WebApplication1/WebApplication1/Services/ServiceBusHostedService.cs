@@ -10,9 +10,12 @@ namespace WebApplication1.Services
 
         private readonly string _connectionString = "";
         private readonly string _queueName = "sbq-azuretest1";
+        private const string topicName = "sbt-azuretest1";
+        private const string subscriptionName = "sbts-azuretest1";
         private readonly ILogger<ServiceBusHostedService> _logger;
         private ServiceBusClient _client = null;
         ServiceBusProcessor processor = null;
+        ServiceBusProcessor processorTopic = null;
         public ServiceBusHostedService(IConfiguration configuration, ILogger<ServiceBusHostedService> logger)
         {
             _connectionString = configuration.GetConnectionString("ServiceBusService");
@@ -31,6 +34,11 @@ namespace WebApplication1.Services
             processor.ProcessMessageAsync += MessageHandler;
             processor.ProcessErrorAsync += ErrorHandler;
             await processor.StartProcessingAsync();
+
+            processorTopic = _client.CreateProcessor(topicName, subscriptionName, new ServiceBusProcessorOptions());
+            processorTopic.ProcessMessageAsync += MessageHandler;
+            processorTopic.ProcessErrorAsync += ErrorHandler;
+            await processorTopic.StartProcessingAsync();
         }
 
         Task MessageHandler(ProcessMessageEventArgs args)
